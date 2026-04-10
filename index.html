@@ -703,22 +703,25 @@ function selectFmt(f){
 function parseCSV(){
   const raw=document.getElementById('csv-input').value.trim();
   if(!raw){showMsg('parse-msg','CSVを貼り付けてください','err');return;}
-  const lines=raw.split('\n').filter(l=>l.trim());
-  if(lines.length<2){showMsg('parse-msg','データが少なすぎます','err');return;}
+  const toHalf=s=>s.replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
   const parse=line=>{const cells=[];let cur='';let inQ=false;for(const c of line){if(c==='"'){inQ=!inQ;}else if(c===','&&!inQ){cells.push(cur.trim());cur='';}else{cur+=c;}}cells.push(cur.trim());return cells;};
+  const lines=raw.split('\n').map(l=>l.replace(/\r/g,''));
+  const headerIdx=lines.findIndex(l=>l.includes('銘柄コード'));
+  if(headerIdx===-1){showMsg('parse-msg','「銘柄コード」の列が見つかりませんでした。マネーフォワードMEのCSVか確認してください。','err');return;}
+  const dataLines=lines.slice(headerIdx+1).filter(l=>l.trim()&&!l.startsWith('銘柄コード'));
   const fmt2=FORMATS[selectedFmt];parsedRows=[];
-  for(const line of lines.slice(1)){
+  for(const line of dataLines){
     const cells=parse(line);if(cells.length<3)continue;
-    const ticker=(cells[fmt2.cols.ticker]||'').replace(/"/g,'').trim();
+    const ticker=toHalf((cells[fmt2.cols.ticker]||'').replace(/"/g,'').trim());
     const name=(cells[fmt2.cols.name]||'').replace(/"/g,'').trim();
-    const shares=parseFloat((cells[fmt2.cols.shares]||'').replace(/[^0-9.]/g,''))||0;
-    const buy=parseFloat((cells[fmt2.cols.buy]||'').replace(/[^0-9.]/g,''))||0;
-    const current=parseFloat((cells[fmt2.cols.current]||'').replace(/[^0-9.]/g,''))||0;
+    const shares=parseFloat(toHalf((cells[fmt2.cols.shares]||'').replace(/[^0-9０-９.]/g,'')))||0;
+    const buy=parseFloat(toHalf((cells[fmt2.cols.buy]||'').replace(/[^0-9０-９.]/g,'')))||0;
+    const current=parseFloat(toHalf((cells[fmt2.cols.current]||'').replace(/[^0-9０-９.]/g,'')))||0;
     if(!ticker||!name||!buy)continue;
     const isUS=/^[A-Za-z]+$/.test(ticker)&&ticker.length<=5;
     parsedRows.push({ticker,name,shares,buy,current:current||buy,type:isUS?'US':'JP',currency:isUS?'USD':'JPY',div:0,alert:20,sector:isUS?'ETF・その他':'金融',reason:'',tags:[]});
   }
-  if(!parsedRows.length){showMsg('parse-msg','読み込めるデータが見つかりませんでした','err');return;}
+  if(!parsedRows.length){showMsg('parse-msg','読み込めるデータが見つかりませんでした。内容を確認してください。','err');return;}
   document.getElementById('preview-body').innerHTML=parsedRows.map((r,i)=>`<tr><td style="font-weight:600">${r.ticker}</td><td>${r.name}</td><td>${typeBadge(r.type)}</td><td>${fmt(r.buy,r.currency)}</td><td>${fmt(r.current,r.currency)}</td><td>${r.shares}</td><td><input type="number" value="0" step="0.1" min="0" id="div-${i}" style="width:55px;padding:3px 5px;border:0.5px solid #ccc;border-radius:6px;font-size:12px"> %</td></tr>`).join('');
   document.getElementById('preview-count').textContent=parsedRows.length+'件のデータを確認';
   document.getElementById('preview-section').style.display='block';
